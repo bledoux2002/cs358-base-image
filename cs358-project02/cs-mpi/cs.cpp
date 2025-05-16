@@ -12,6 +12,7 @@
 
 #include "app.h"
 #include "matrix.h"
+#include <mpi.h>
 
 
 //
@@ -271,4 +272,58 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	Delete2dMatrix(image2);
 
 	return image;
+}
+
+
+uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs) {
+  cout << "main starting..." << endl;
+  cout.flush();
+
+  int myRank = 0;
+
+  //send to workers
+  for (int w = 1; w < numProcs; w++) {
+    int dest = w;
+    int count = rows * cols;
+    int tag = 0;
+
+    MPI_Send(&rows, 1, MPI_INT, dest, tag, MPI_COMM_WORLD);
+    MPI_Send(&cols, 1, MPI_INT, dest, tag, MPI_COMM_WORLD);
+    MPI_Send(&steps, 1, MPI_INT, dest, tag, MPI_COMM_WORLD);
+    
+    MPI_Send(&image, count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
+  }
+
+  int chunkSize = rows / numProcs;
+  int startRow = chunkSize * myRank;
+  int endRow = startRow + chunkSize; //possibly doesn't include borders?
+
+  //WORK
+
+
+
+  //recv from workers
+  for (int w = 1; w < numProcs; w++) {
+
+    int src = w;
+    int count = chunkSize * rows;
+    int tag = 0;
+
+    int row = chunkSize * w;
+
+    MPI_Recv(image[row], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+
+  return image;
+}
+
+uchar **worker_process(int myRank, int numProcs) {
+  cout << "worker " << myRank << " starting..." << endl;
+  cout.flush();
+
+  int src = 0;
+  int count = 1;
+  int tag = 0;
+
+
 }
