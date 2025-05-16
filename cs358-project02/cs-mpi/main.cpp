@@ -15,6 +15,8 @@
 
 #include "app.h"
 #include <mpi.h>
+#include "matrix.h"
+#include "debug.h"
 
 
 //
@@ -102,6 +104,9 @@ int main(int argc, char* argv[])
 
 		cout << "** Execution complete." << endl;
 		cout << endl;
+
+    // debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
+    
 	}
 
 	MPI_Finalize();

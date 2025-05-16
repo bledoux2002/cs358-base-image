@@ -63,3 +63,7 @@ void    WriteBitmapFile(char *filename, BITMAPFILEHEADER bitmapFileHeader, BITMA
 
 /* ContrastStretch.cpp */
 uchar **ContrastStretch(uchar **image, int rows, int cols, int steps);
+
+/* Main and Worker Processes */
+uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs);
+void worker_process(int myRank, int numProcs);
