@@ -275,47 +275,61 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
   cout << "main starting..." << endl;
   cout.flush();
 
-  for (int i = 0; i < steps; i++) {
+  
+  for (int w = 1; w < numProcs; w++) {
+    int dest = w;
+    int count = 1;
+    int tag = 0;
+    MPI_Send(&steps, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
+  }
 
+  for (int i = 0; i < steps; i++) {
+    cout << "Step " << i << endl;
+    cout.flush();
+    
     // int myRank = 0;
     int chunkSize = rows / numProcs; //possible issue here
     int startRow = chunkSize * (numProcs - 1);
-
+    
     //send to workers
     for (int w = 1; w < numProcs; w++) {
+      // cout << "Sending to worker " << w << endl;
+      // cout.flush();
+
       int dest = w;
       int count = 1;
       int tag = 0;
 
-      MPI_Ssend(&chunkSize, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
-      MPI_Ssend(&rows, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
-      MPI_Ssend(&cols, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
-
+      MPI_Send(&chunkSize, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
+      MPI_Send(&rows, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
+      MPI_Send(&cols, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
+      
       count = rows * cols * 3;
       //eventually only send chunks of the image
       // MPI_Send(&image[(w - 1) * chunkSize], count + 2, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
-
-      MPI_Ssend(&image[0], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
+      
+      MPI_Ssend(image[0], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
+      
     }
-
+    
     //WORK
-    int remainder = rows % numProcs;
-    image = ContrastStretch(image, chunkSize + remainder, cols, startRow, rows);
-
+    // int remainder = rows % numProcs;
+    image = ContrastStretch(image, chunkSize, cols, startRow, rows);
+    
     //recv from workers
     for (int w = 1; w < numProcs; w++) {
 
       int src = w;
       int count = chunkSize * cols * 3;
       int tag = 0;
-
+      
       int row = (w - 1) * chunkSize;
-
+      
       MPI_Recv(image[row], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
+      
     }
-}
-
+  }
+  
   return image;
 }
 
@@ -327,28 +341,37 @@ void worker_process(int myRank, int numProcs) {
   int count = 1;
   int tag = 0;
 
-  int chunkSize, rows, cols;
+  int steps = 0;
 
-  MPI_Recv(&chunkSize, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Recv(&rows, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  MPI_Recv(&cols, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  
-  count = rows * cols * 3;
-  uchar **image = New2dMatrix<uchar>(rows, cols*3);
-  
-  MPI_Recv(&image[0], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  MPI_Recv(&steps, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  int startRow = chunkSize * (myRank - 1);
+  for (int step = 0; step < steps; step++) {
+    src = 0;
+    count = 1;
+    tag = 0;
+    
+    int chunkSize, rows, cols;
+    
+    MPI_Recv(&chunkSize, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&rows, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&cols, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    
+    count = rows * cols * 3;
+    uchar **image = New2dMatrix<uchar>(rows, cols*3);
+    
+    MPI_Recv(image[0], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    
+    int startRow = chunkSize * (myRank - 1);
+    
+    //WORK
+    image = ContrastStretch(image, chunkSize, cols, startRow, rows);
 
-  //WORK
+    int dest = 0;
+    count = chunkSize * cols * 3;
+    tag = 0;
 
-  image = ContrastStretch(image, chunkSize, cols, startRow, rows);
+    MPI_Send(image[startRow], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
 
-  int dest = 0;
-  count = chunkSize * rows * 3;
-  tag = 0;
-
-  MPI_Ssend(image[startRow], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
-
-  Delete2dMatrix(image);
+    Delete2dMatrix(image);
+  }
 }
