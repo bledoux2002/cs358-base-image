@@ -237,7 +237,7 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int end
 		//
 		// Okay, for each row (except boundary rows), lighten/darken pixel:
 		//
-		for (int row = startRow + 1; row < endRow - 1; row++)
+		for (int row = startRow; row < endRow; row++)
 		{
 			//
 			// And for each column (except boundary columns), lighten/darken pixel:
@@ -313,7 +313,7 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
     }
     
     //WORK
-    image = ContrastStretch(image, chunkSize, cols, startRow, rows, rows);
+    image = ContrastStretch(image, chunkSize, cols, startRow, rows - 1, rows);
     
     //recv from workers
     for (int w = 1; w < numProcs; w++) {
@@ -360,11 +360,11 @@ void worker_process(int myRank, int numProcs) {
     
     MPI_Recv(image[0], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     
-    int startRow = chunkSize * (myRank - 1);
+    int startRow = (chunkSize * (myRank - 1));
 
-    if (myRank == 1) startRow = 0;
+    if (myRank == 1) startRow = 1;
 
-    int endRow = chunkSize + startRow + 1;
+    int endRow = chunkSize + startRow;
     
     //WORK
     image = ContrastStretch(image, chunkSize, cols, startRow, endRow, rows);
