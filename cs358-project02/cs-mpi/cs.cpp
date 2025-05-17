@@ -312,6 +312,7 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
     }
     
     //WORK (give full image, define chunk of image to work on)
+	if (numProcs == 1) startRow = 1;
     image = ContrastStretch(image, chunkSize, cols, startRow, rows - 1, rows);
     
     //recv from workers
