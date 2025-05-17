@@ -230,7 +230,6 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int end
 	//
 	// Okay, now perform contrast stretching, one step at a time:
 	//
-	int step = 1;
 
 		// cout << "** Step " << step << "..." << endl;
 
@@ -259,8 +258,6 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int end
 		uchar** tempi = image;
 		image = image2;
 		image2 = tempi;
-
-		step++;
 
 	//
 	// done!
@@ -308,7 +305,7 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
       //eventually only send chunks of the image
       // MPI_Send(&image[(w - 1) * chunkSize], count + 2, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
       
-      MPI_Ssend(image[0], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
+      MPI_Send(image[0], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
       
     }
     
@@ -363,15 +360,17 @@ void worker_process(int myRank, int numProcs) {
     int startRow = (chunkSize * (myRank - 1));
 
     if (myRank == 1) startRow = 1;
-
+    
     int endRow = chunkSize + startRow;
     
     //WORK
     image = ContrastStretch(image, chunkSize, cols, startRow, endRow, rows);
-
+    
     int dest = 0;
     count = chunkSize * cols * 3;
     tag = 0;
+    
+    if (myRank == 1) startRow = 0;
 
     MPI_Send(image[startRow], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
 
