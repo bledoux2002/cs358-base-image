@@ -214,6 +214,10 @@ void stretch_one_pixel(uchar** image2, uchar** image, int baserow, int basecol)
 // which means a "column" in the matrix is actually 3 columns: Blue, Green, and Red.  So
 // as we loop over the matrix, we loop by 3 as we go along the column.
 //
+
+// Changed so it only performs one step. Since the border rows being updated by other images
+// need to be taken into account, it looks at entire image being sent over and over again.
+// rows is now chunkSize, added start and end rows, totalRows now gives full size of image
 uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int endRow, int totalRows)
 {
 	//
@@ -228,36 +232,34 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int end
 	copy_boundary(image2, image, totalRows, cols);
 
 	//
-	// Okay, now perform contrast stretching, one step at a time:
+	// Okay, now perform contrast stretching
 	//
 
-		// cout << "** Step " << step << "..." << endl;
+	//
+	// Okay, for each row (except boundary rows), lighten/darken pixel:
+	//
+	for (int row = startRow; row < endRow; row++)
+	{
+		//
+		// And for each column (except boundary columns), lighten/darken pixel:
+		//
+		// columns are a little trickier, since a "column" is really 
+		// 3 physical cols: RGB
+		//
+		int basecol = 3;  // start of column (skip boundary column 0):
 
-		//
-		// Okay, for each row (except boundary rows), lighten/darken pixel:
-		//
-		for (int row = startRow; row < endRow; row++)
+		for (int col = 1; col < cols-1; col++, basecol += 3)
 		{
-			//
-			// And for each column (except boundary columns), lighten/darken pixel:
-			//
-			// columns are a little trickier, since a "column" is really 
-			// 3 physical cols: RGB
-			//
-			int basecol = 3;  // start of column (skip boundary column 0):
-
-			for (int col = 1; col < cols-1; col++, basecol += 3)
-			{
-				stretch_one_pixel(image2, image, row, basecol);
-			}
+			stretch_one_pixel(image2, image, row, basecol);
 		}
+	}
 
-		//
-		// flip the image pointers and step:
-		//
-		uchar** tempi = image;
-		image = image2;
-		image2 = tempi;
+	//
+	// flip the image pointers and step:
+	//
+	uchar** tempi = image;
+	image = image2;
+	image2 = tempi;
 
 	//
 	// done!
@@ -267,12 +269,12 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int end
 	return image;
 }
 
-
+// main node process. sends work to worker nodes, works on last chunk, receives from workers
 uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs) {
   cout << "main starting..." << endl;
   cout.flush();
 
-  
+  // send total num of steps to workers so they know how many times to receive
   for (int w = 1; w < numProcs; w++) {
     int dest = w;
     int count = 1;
@@ -280,6 +282,7 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
     MPI_Send(&steps, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
   }
 
+  // for each step, send full image to workers, work on last chunk, receive chunk from workers
   for (int i = 0; i < steps; i++) {
     cout << "Step " << i << endl;
     cout.flush();
@@ -302,14 +305,13 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
       MPI_Send(&cols, count, MPI_INT, dest, tag, MPI_COMM_WORLD);
       
       count = rows * cols * 3;
-      //eventually only send chunks of the image
-      // MPI_Send(&image[(w - 1) * chunkSize], count + 2, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
-      
+
+	  //send full image to worker
       MPI_Send(image[0], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
       
     }
     
-    //WORK
+    //WORK (give full image, define chunk of image to work on)
     image = ContrastStretch(image, chunkSize, cols, startRow, rows - 1, rows);
     
     //recv from workers
@@ -321,6 +323,7 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
       
       int row = (w - 1) * chunkSize;
       
+	  // overwrite image chunk with worked-on chunk
       MPI_Recv(image[row], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       
     }
@@ -329,6 +332,7 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
   return image;
 }
 
+// worker node process, receives data from main process, works on chunk of full image, sends chunk of full image 
 void worker_process(int myRank, int numProcs) {
   cout << "worker " << myRank << " starting..." << endl;
   cout.flush();
@@ -339,8 +343,10 @@ void worker_process(int myRank, int numProcs) {
 
   int steps = 0;
 
+  // number of steps
   MPI_Recv(&steps, count, MPI_INT, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
+  // receive data, work on it, send chunk back over and over for each step
   for (int step = 0; step < steps; step++) {
     src = 0;
     count = 1;
@@ -355,23 +361,24 @@ void worker_process(int myRank, int numProcs) {
     count = rows * cols * 3;
     uchar **image = New2dMatrix<uchar>(rows, cols*3);
     
+	//receive full image
     MPI_Recv(image[0], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     
     int startRow = (chunkSize * (myRank - 1));
-
+	// border chunk (top of image, shift start row down one to prevent segmentation fault)
     if (myRank == 1) startRow = 1;
-    
     int endRow = chunkSize + startRow;
     
-    //WORK
+    //WORK (give full image, define chunk of image to work on)
     image = ContrastStretch(image, chunkSize, cols, startRow, endRow, rows);
     
     int dest = 0;
     count = chunkSize * cols * 3;
     tag = 0;
-    
+	// border chunk (at top of image, reset start row to 0 to prevent shifting of image)
     if (myRank == 1) startRow = 0;
 
+	//send worked-on chunk of image
     MPI_Send(image[startRow], count, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
 
     Delete2dMatrix(image);

@@ -33,6 +33,7 @@ int main(int argc, char* argv[])
 
 	if (myRank > 0) {
 
+		//begin worker processes
 		worker_process(myRank, numProcs);
 
 	}
@@ -86,7 +87,7 @@ int main(int argc, char* argv[])
 
 	  auto start = chrono::high_resolution_clock::now();
 
-	  // image = ContrastStretch(image, rows, cols, steps);
+	  // begin main process
 	  image = main_process(image, rows, cols, steps, numProcs);
 
 	  auto stop = chrono::high_resolution_clock::now();
@@ -105,7 +106,7 @@ int main(int argc, char* argv[])
 		cout << "** Execution complete." << endl;
 		cout << endl;
 
-    debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
+    // debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
     
 	}
 
