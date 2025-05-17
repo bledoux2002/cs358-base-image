@@ -214,7 +214,7 @@ void stretch_one_pixel(uchar** image2, uchar** image, int baserow, int basecol)
 // which means a "column" in the matrix is actually 3 columns: Blue, Green, and Red.  So
 // as we loop over the matrix, we loop by 3 as we go along the column.
 //
-uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int totalRows)
+uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int endRow, int totalRows)
 {
 	//
 	// First, we need a temporary 2D matrix of the same size:
@@ -237,7 +237,7 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int startRow, int tot
 		//
 		// Okay, for each row (except boundary rows), lighten/darken pixel:
 		//
-		for (int row = startRow + 1; row < startRow + rows - 1; row++)
+		for (int row = startRow + 1; row < endRow - 1; row++)
 		{
 			//
 			// And for each column (except boundary columns), lighten/darken pixel:
@@ -313,8 +313,7 @@ uchar **main_process(uchar **image, int rows, int cols, int steps, int numProcs)
     }
     
     //WORK
-    // int remainder = rows % numProcs;
-    image = ContrastStretch(image, chunkSize, cols, startRow, rows);
+    image = ContrastStretch(image, chunkSize, cols, startRow, rows, rows);
     
     //recv from workers
     for (int w = 1; w < numProcs; w++) {
@@ -362,9 +361,13 @@ void worker_process(int myRank, int numProcs) {
     MPI_Recv(image[0], count, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     
     int startRow = chunkSize * (myRank - 1);
+
+    if (myRank == 1) startRow = 0;
+
+    int endRow = chunkSize + startRow + 1;
     
     //WORK
-    image = ContrastStretch(image, chunkSize, cols, startRow, rows);
+    image = ContrastStretch(image, chunkSize, cols, startRow, endRow, rows);
 
     int dest = 0;
     count = chunkSize * cols * 3;
