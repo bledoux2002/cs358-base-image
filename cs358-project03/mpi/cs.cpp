@@ -265,7 +265,14 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 		// 1 of 2: everyone send their last data row *DOWN* to the next proc, and receive 
 		// that row from the process above them and store into first (top) ghost row:
 		//
-		if (myRank < numProcs-1)  // all send except the last process:
+		int dest = (myRank < numProcs-1) ? myRank + 1 : MPI_PROC_NULL;  // next process, or 0 if last process
+		int src = (myRank > 0) ? myRank - 1 : MPI_PROC_NULL;  // previous process, or 0 if first process
+		
+		MPI_Sendrecv(chunk[rows], cols, MPI_UNSIGNED_CHAR, dest, tag,
+		    image[0], cols, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, &status);
+		
+		//
+			if (myRank < numProcs-1)  // all send except the last process:
 			MPI_Send(image[rows], cols*3, MPI_UNSIGNED_CHAR, myRank+1, tag, MPI_COMM_WORLD);
 
 		if (myRank > 0)  // all receive except the first process, store into top row:

@@ -198,6 +198,22 @@ uchar** DistributeImage(int myRank, int numProcs,
 		// okay, master is now only responsible for their own (the first) chunk:
 		rows = rowsPerProc + leftOverRows;
 	}
+
+	/* All processes execute broadcast */
+	int sender = 0;
+	MPI_Bcast(params, 2 /*count*/, MPI_INT, sender, MPI_COMM_WORLD);
+
+	rows = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
+	cols = params[1];  // cols is the same for all processes
+
+	// allocate memory for the image chunk:
+	chunk = New2dMatrix<uchar>(rows + 2, cols);  // worst-case: +2 ghost rows
+
+	uchar* sendbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // master sends their chunk, workers receive their chunk
+
+	sender = 0;  // master sends, workers receive
+	MPI_Scatter(sendbuf, rowsPerProc * cols, MPI_UNSIGNED_CHAR, chunk[1], rowsPerProc * cols, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
+
 	else  // Workers:
 	{
 		//
@@ -243,6 +259,12 @@ uchar** CollectImage(int myRank, int numProcs,
 	                 uchar** image, int rows, int cols, 
 	                 int rowsPerProc, int leftOverRows)
 {
+	receiver = 0;  // master receives, workers send
+	uchar* recvbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // workers send their chunk, master receives
+
+	MPI_Gather(chunk[1], rowsPerProc * cols, MPI_UNSIGNED_CHAR, 
+	    recvbuf, rowsPerProc * cols, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
+
 	int src, dest, tag;
 	MPI_Status status;
 
