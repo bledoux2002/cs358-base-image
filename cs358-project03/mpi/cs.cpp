@@ -3,7 +3,7 @@
 //
 // Performs the actual contrast stretching.
 //
-// << YOUR NAME >>
+// Benjamin Ledoux
 //
 // Initial author:
 //   Prof. Joe Hummel
@@ -268,26 +268,19 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 		int dest = (myRank < numProcs-1) ? myRank + 1 : MPI_PROC_NULL;  // next process, or 0 if last process
 		int src = (myRank > 0) ? myRank - 1 : MPI_PROC_NULL;  // previous process, or 0 if first process
 		
-		MPI_Sendrecv(chunk[rows], cols, MPI_UNSIGNED_CHAR, dest, tag,
-		    image[0], cols, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, &status);
-		
-		//
-			if (myRank < numProcs-1)  // all send except the last process:
-			MPI_Send(image[rows], cols*3, MPI_UNSIGNED_CHAR, myRank+1, tag, MPI_COMM_WORLD);
-
-		if (myRank > 0)  // all receive except the first process, store into top row:
-			MPI_Recv(image[0], cols*3, MPI_UNSIGNED_CHAR, myRank-1, tag, MPI_COMM_WORLD, &status);
+		MPI_Sendrecv(image[rows], cols * 3, MPI_UNSIGNED_CHAR, dest, tag,
+		    image[0], cols * 3, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, &status);
 
 		// 
 		// 2 of 2: everyone send their first data row *UP* to the previous proc, and receive
 		// that row from the process below them and store into their last (bottom) ghost row:
 		//
-		if (myRank > 0)  // all send except the first process:
-			MPI_Send(image[1], cols*3, MPI_UNSIGNED_CHAR, myRank-1, tag, MPI_COMM_WORLD);
-
-		if (myRank < numProcs-1)  // all receive except the last process, store in bottom row:
-			MPI_Recv(image[rows+1], cols*3, MPI_UNSIGNED_CHAR, myRank+1, tag, MPI_COMM_WORLD, &status);
-
+		int temp = dest;
+		dest = src;
+		src = temp;
+		
+		MPI_Sendrecv(image[0], cols * 3, MPI_UNSIGNED_CHAR, dest, tag,
+		    image[rows], cols * 3, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, &status);
 		//
 		// Okay, for each row in OUR CHUNK, lighten/darken pixel:
 		//
