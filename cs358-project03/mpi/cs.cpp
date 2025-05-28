@@ -250,8 +250,9 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	// Okay, now perform contrast stretching, one step at a time:
 	//
 	int step = 1;
+	bool converged = false;
 
-	while (step <= steps)
+	while (step <= steps && !converged)
 	{
 		if (myRank == 0)
 		  cout << "** Step " << step << "..." << endl;
@@ -284,6 +285,7 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 		//
 		// Okay, for each row in OUR CHUNK, lighten/darken pixel:
 		//
+		int diffs = 0;
 		for (int row = 1; row <= rows; row++)
 		{
 			//
@@ -297,8 +299,15 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 			for (int col = 1; col < cols - 1; col++, basecol += 3)
 			{
 				stretch_one_pixel(image2, image, row, basecol);
+				// Check if any of the rgb values have changed at all
+				for (int offset = 0; offset < 3; offset++) {
+					if (image[row][basecol + offset] != image2[row][basecol + offset])
+						diffs++;
+				}
 			}
 		}
+
+		converged = (diffs == 0);
 
 		//
 		// copy the boundary rows into the temp image so we can swap
