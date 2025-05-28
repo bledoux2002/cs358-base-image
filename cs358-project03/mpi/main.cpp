@@ -180,72 +180,35 @@ uchar** DistributeImage(int myRank, int numProcs,
 
 		params[0] = rowsPerProc;
 		params[1] = cols;
-
-		// for all workers, each gets an equal chunk (master keeps extra rows):
-		for (dest = 1; dest < numProcs; dest++)
-			MPI_Send(params, sizeof(params) / sizeof(params[0]), MPI_INT, dest, tag, MPI_COMM_WORLD);
-
-		//
-		// Note that for simplicity we are *not* sending the ghost rows along with the chunks, 
-		// we are just sending the image chunks owned by each process.  This will require an 
-		// extra send/recv later on, but the code is much cleaner here as a result.
-		//
-
-		// send chunk to each worker (skipping over extra rows owned by master):
-		for (dest = 1; dest < numProcs; dest++)
-			MPI_Send(image[leftOverRows + dest * rowsPerProc], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
-
-		// okay, master is now only responsible for their own (the first) chunk:
-		rows = rowsPerProc + leftOverRows;
 	}
-
+	
 	/* All processes execute broadcast */
 	int sender = 0;
 	MPI_Bcast(params, 2 /*count*/, MPI_INT, sender, MPI_COMM_WORLD);
-
+	
 	rows = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
 	cols = params[1];  // cols is the same for all processes
+	
+	if (myRank == 0)  // Master gets leftover rows
+	{
+		rows = rowsPerProc + leftOverRows;
+	}
+			
 
 	// allocate memory for the image chunk:
-	chunk = New2dMatrix<uchar>(rows + 2, cols);  // worst-case: +2 ghost rows
+	chunk = New2dMatrix<uchar>(rows + 2, cols * 3);  // worst-case: +2 ghost rows
 
 	uchar* sendbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // master sends their chunk, workers receive their chunk
 
 	sender = 0;  // master sends, workers receive
-	MPI_Scatter(sendbuf, rowsPerProc * cols, MPI_UNSIGNED_CHAR, chunk[1], rowsPerProc * cols, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
-
-	else  // Workers:
-	{
-		//
-		// Workers: receive size of our CHUNK in rows x cols, allocate data for such a 
-		// chunk, and then receive the data itself:
-		//
-		src = 0;  // from master
-		MPI_Recv(params, sizeof(params) / sizeof(params[0]), MPI_INT, src, tag, MPI_COMM_WORLD, &status);
-
-		rows = params[0];
-		cols = params[1];
-
-		//
-		// Next, workers need to create image matrix for CHUNK they will own, including ghost
-		// rows they will need during processing:
-		//
-		image = New2dMatrix<uchar>(rows + 2, cols * 3);  // worst-case: 2 ghost rows (+2)
-
-		//
-		// okay workers, receive data into newly-allocated matrix, skipping the first row
-		// since it will be used for ghost row storage (which is why it's image[1] below 
-		// and not image[0]):
-		//
-		src = 0;  // from master
-		MPI_Recv(image[1], rows * cols * 3, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, &status);
-	}
+	MPI_Scatter(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR,
+		chunk[1], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
 
 	//
 	// Done!  Everyone returns back a matrix to process... (rows and cols should already
 	// be set for both master and workers)
 	//
-	return image;
+	return chunk;
 }
 
 
@@ -262,8 +225,8 @@ uchar** CollectImage(int myRank, int numProcs,
 	receiver = 0;  // master receives, workers send
 	uchar* recvbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // workers send their chunk, master receives
 
-	MPI_Gather(chunk[1], rowsPerProc * cols, MPI_UNSIGNED_CHAR, 
-	    recvbuf, rowsPerProc * cols, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
+	MPI_Gather(chunk[1], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
+	    recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
 
 	int src, dest, tag;
 	MPI_Status status;
