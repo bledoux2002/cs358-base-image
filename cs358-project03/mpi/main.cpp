@@ -228,39 +228,6 @@ uchar** CollectImage(int myRank, int numProcs,
 	MPI_Gather(chunk[1], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
 	    recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
 
-	int src, dest, tag;
-	MPI_Status status;
-
-	//cout << myRank << " (" << host << "): Collecting image..." << endl;
-
-	//
-	// WORKERS send, MASTER receives:
-	//
-	tag = 0;
-
-	if (myRank > 0)  // workers:
-	{
-		dest = 0;  // to master
-		// NOTE: skip over the first (ghost) row when sending in our final results:
-		MPI_Send(image[1], rows * cols * 3, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD);
-
-		// workers are done with CHUNK, so free associated memory:
-		Delete2dMatrix<uchar>(image);
-		image = NULL;
-	}
-	else  // master:
-	{
-		//
-		// we could allocate a temp buffer and receive msgs in any order, but there doesn't seem
-		// much point since we are done after this.  So we'll keep the code simple and just
-		// receive in the order the chunks are copied back into the image matrix:
-		//
-
-		// for all workers, receive their chunk and store back into matrix:
-		for (src = 1; src < numProcs; src++)
-			MPI_Recv(image[leftOverRows + src * rowsPerProc], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, &status);
-	}
-
 	// 
 	// Done, return final image:
 	//

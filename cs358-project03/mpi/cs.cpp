@@ -307,7 +307,13 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 			}
 		}
 
-		converged = (diffs == 0);
+		int total_diffs = 0;
+
+		MPI_Reduce(&diffs, &total_diffs, 1, MPI_INT, MPI_SUM, 0 /*main*/, MPI_COMM_WORLD);
+
+		MPI_Bcast(&total_diffs, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+		converged = (total_diffs == 0);
 
 		//
 		// copy the boundary rows into the temp image so we can swap
