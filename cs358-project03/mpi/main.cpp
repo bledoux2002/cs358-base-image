@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
 		cout << endl;
 	}
 
-	debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
+	// debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
 
 	//
 	// done:
@@ -220,13 +220,21 @@ uchar** DistributeImage(int myRank, int numProcs,
 	uchar** chunk = New2dMatrix<uchar>(rows + 2, cols * 3);  // worst-case: +2 ghost rows
 
 	uchar* sendbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // master sends their chunk, workers receive their chunk
+	int startRow = (myRank == 0) ? leftOverRows + 1 : 1;  // master starts at leftOverRows, workers start at 0
+
+	//MAYBE CHANGE STARTROW FOR MAIN TO JUST LEFTOVERROWS, NOT LEFTOVERROWS + 1
 
 	// cout << "TEST ON " << myRank << " BEFORE SCATTER" << endl;
-	cout.flush();
+	// cout.flush();
 	MPI_Scatter(sendbuf, rows * cols * 3, MPI_UNSIGNED_CHAR,
-		chunk[1], rows * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
+		chunk[startRow], rows * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
 	// cout << "TEST ON " << myRank << " AFTER SCATTER" << endl;
-	cout.flush();
+	// cout.flush();
+
+	if (myRank == 0) {
+		// copy the leftover rows into the chunk for the master process
+		memcpy(chunk[1], image[1], leftOverRows * cols * 3);
+	}
 
 	//
 	// Done!  Everyone returns back a matrix to process... (rows and cols should already
