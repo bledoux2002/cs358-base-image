@@ -110,22 +110,19 @@ int main(int argc, char* argv[])
 	//
 	// cout << "DISTRIBUTE IMAGE " << myRank << endl;
 	// cout.flush();
-	cout << myRank << ") BEFORE DISTRIBUTION -- rows: " << rows << ", cols: " << cols << ", rowsPerProc: " << rowsPerProc << ", leftOverRows: " << leftOverRows << endl;
-	cout.flush();
 	image = DistributeImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows);
 
 	//
 	// Okay, everyone performs constrast-stretching on their chunk:
 	//
-	// cout << "CONTRAST STRETCH " << myRank << endl;
-	cout << myRank << ") BEFORE CONTRAST STRETCH -- rows: " << rows << ", cols: " << cols << ", rowsPerProc: " << rowsPerProc << ", leftOverRows: " << leftOverRows << endl;
+	cout << "CONTRAST STRETCH " << myRank << endl;
 	cout.flush();
-	image = ContrastStretch(image, rowsPerProc, cols, steps);
+	image = ContrastStretch(image, rows, cols, steps);
 
 	//
 	// Collect the results: WORKERS send, MASTER receives and puts image back together:
 	//
-	cout << myRank << ") BEFORE COLLECT IMAGE -- rows: " << rows << ", cols: " << cols << ", rowsPerProc: " << rowsPerProc << ", leftOverRows: " << leftOverRows << endl;
+	cout << "COLLECT IMAGE " << myRank << endl;
 	cout.flush();
 	image = CollectImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows);
 
@@ -149,7 +146,7 @@ int main(int argc, char* argv[])
 
 		cout << "** Execution complete." << endl;
 		cout << endl;
-
+		
 		debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
 	}
 
@@ -205,38 +202,32 @@ uchar** DistributeImage(int myRank, int numProcs,
 	// cout << "TEST ON " << myRank << " AFTER BROADCAST" << endl;
 	// cout.flush();
 	
-	rowsPerProc = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
+	rows = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
 	cols = params[1];  // cols is the same for all processes
-
-	//
-	// Okay, processes on the boundary of the image (the master and last worker, i.e.
-	// processes that own top and bottom chunks of image) have one fewer row to process
-	// since we don't process the boundary rows.  If we adjust now, this makes the 
-	// processing loop MUCH cleaner:
-	//
-	if (myRank == 0)  // main:
-		rowsPerProc--;
-	if (myRank == numProcs-1)  // last worker:
-		rowsPerProc--;
+	
+	if (myRank == 0)  // Master gets leftover rows
+	{
+		rows += leftOverRows;
+	}
 
 	// allocate memory for the image chunk:
-	uchar** chunk = New2dMatrix<uchar>(rowsPerProc + 2 + leftOverRows, cols * 3);  // leftOverRows stays as 0 for non-main procs
+	uchar** chunk = New2dMatrix<uchar>(rows + 2, cols * 3);  // worst-case: +2 ghost rows
 
 	uchar* sendbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // master sends their chunk, workers receive their chunk
-	int startRow = (myRank == 0) ? leftOverRows : 1;  // master starts at leftOverRows, workers start at 0
+	int startRow = (myRank == 0) ? leftOverRows + 1 : 1;  // master starts at leftOverRows, workers start at 0
 	// int startRow = 1;
 	//MAYBE CHANGE STARTROW FOR MAIN TO JUST LEFTOVERROWS, NOT LEFTOVERROWS + 1
 
 	// cout << "TEST ON " << myRank << " BEFORE SCATTER" << endl;
 	// cout.flush();
-	MPI_Scatter(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR,
-		chunk[startRow], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
+	MPI_Scatter(sendbuf, rows * cols * 3, MPI_UNSIGNED_CHAR,
+		chunk[startRow], rows * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
 	// cout << "TEST ON " << myRank << " AFTER SCATTER" << endl;
 	// cout.flush();
 
 	if (myRank == 0) {
 		// copy the leftover rows into the chunk for the master process
-		memcpy(chunk[0], image[0], leftOverRows * cols * 3);
+		memcpy(chunk[1], image[1], leftOverRows * cols * 3);
 	}
 
 	//
@@ -262,8 +253,8 @@ uchar** CollectImage(int myRank, int numProcs,
 	int receiver = 0;  // master receives, workers send
 	uchar* recvbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // workers send their chunk, master receives
 
-	MPI_Gather(image[1], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
-	    recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
+	MPI_Gather(image[1], rows * cols * 3, MPI_UNSIGNED_CHAR, 
+	    recvbuf, rows * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
 
 	// 
 	// Done, return final image:

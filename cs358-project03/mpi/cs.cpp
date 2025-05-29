@@ -236,6 +236,17 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	uchar **image2 = New2dMatrix<uchar>(rows+2, cols*3);  // worst-case: +2 ghost rows
 
 	//
+	// Okay, processes on the boundary of the image (the master and last worker, i.e.
+	// processes that own top and bottom chunks of image) have one fewer row to process
+	// since we don't process the boundary rows.  If we adjust now, this makes the 
+	// processing loop MUCH cleaner:
+	//
+	if (myRank == 0)  // main:
+		rows--;
+	if (myRank == numProcs-1)  // last worker:
+		rows--;
+
+	//
 	// Okay, now perform contrast stretching, one step at a time:
 	//
 	int step = 1;
