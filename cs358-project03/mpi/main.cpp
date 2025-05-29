@@ -146,9 +146,10 @@ int main(int argc, char* argv[])
 
 		cout << "** Execution complete." << endl;
 		cout << endl;
+		
+		debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
 	}
 
-	// debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
 
 	//
 	// done:
@@ -208,20 +209,13 @@ uchar** DistributeImage(int myRank, int numProcs,
 	{
 		rows += leftOverRows;
 	}
-	
-	cout << myRank << "): rowsPerProc = " << rowsPerProc 
-	     << ", leftOverRows = " << leftOverRows 
-	     << ", rows = " << rows 
-	     << ", cols = " << cols 
-	     << endl;
-		 cout.flush();
 
 	// allocate memory for the image chunk:
 	uchar** chunk = New2dMatrix<uchar>(rows + 2, cols * 3);  // worst-case: +2 ghost rows
 
 	uchar* sendbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // master sends their chunk, workers receive their chunk
 	int startRow = (myRank == 0) ? leftOverRows + 1 : 1;  // master starts at leftOverRows, workers start at 0
-
+	// int startRow = 1;
 	//MAYBE CHANGE STARTROW FOR MAIN TO JUST LEFTOVERROWS, NOT LEFTOVERROWS + 1
 
 	// cout << "TEST ON " << myRank << " BEFORE SCATTER" << endl;
