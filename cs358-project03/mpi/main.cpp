@@ -202,16 +202,16 @@ uchar** DistributeImage(int myRank, int numProcs,
 	// cout << "TEST ON " << myRank << " AFTER BROADCAST" << endl;
 	// cout.flush();
 	
-	rows = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
+	rowsPerProc = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
 	cols = params[1];  // cols is the same for all processes
 	
 	if (myRank == 0)  // Master gets leftover rows
 	{
-		rows += leftOverRows;
+		rowsPerProc += leftOverRows;
 	}
 
 	// allocate memory for the image chunk:
-	uchar** chunk = New2dMatrix<uchar>(rows + 2, cols * 3);  // worst-case: +2 ghost rows
+	uchar** chunk = New2dMatrix<uchar>(rowsPerProc, cols * 3);  // worst-case: +2 ghost rows
 
 	uchar* sendbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // master sends their chunk, workers receive their chunk
 	int startRow = (myRank == 0) ? leftOverRows + 1 : 1;  // master starts at leftOverRows, workers start at 0
@@ -220,14 +220,14 @@ uchar** DistributeImage(int myRank, int numProcs,
 
 	// cout << "TEST ON " << myRank << " BEFORE SCATTER" << endl;
 	// cout.flush();
-	MPI_Scatter(sendbuf, rows * cols * 3, MPI_UNSIGNED_CHAR,
-		chunk[startRow], rows * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
+	MPI_Scatter(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR,
+		chunk[startRow], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
 	// cout << "TEST ON " << myRank << " AFTER SCATTER" << endl;
 	// cout.flush();
 
 	if (myRank == 0) {
 		// copy the leftover rows into the chunk for the master process
-		memcpy(chunk[1], image[1], leftOverRows * cols * 3);
+		memcpy(chunk[0], image[0], leftOverRows * cols * 3);
 	}
 
 	//
@@ -253,8 +253,8 @@ uchar** CollectImage(int myRank, int numProcs,
 	int receiver = 0;  // master receives, workers send
 	uchar* recvbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // workers send their chunk, master receives
 
-	MPI_Gather(image[1], rows * cols * 3, MPI_UNSIGNED_CHAR, 
-	    recvbuf, rows * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
+	MPI_Gather(image[1], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
+	    recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
 
 	// 
 	// Done, return final image:
