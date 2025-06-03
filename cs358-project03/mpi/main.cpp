@@ -108,26 +108,17 @@ int main(int argc, char* argv[])
 	//
 	// MASTER distributes matrix, WORKERS receives their chunk of matrix:
 	//
-	// cout << "DISTRIBUTE IMAGE " << myRank << endl;
-	// cout.flush();
 	image = DistributeImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows);
 
 	//
 	// Okay, everyone performs constrast-stretching on their chunk:
 	//
-	// cout << "CONTRAST STRETCH " << myRank << ", rows: " << rows << endl;
-	// cout.flush();
 	image = ContrastStretch(image, rowsPerProc, cols, steps);
 
 	//
 	// Collect the results: WORKERS send, MASTER receives and puts image back together:
 	//
-	cout << "COLLECT IMAGE " << myRank << endl;
-	cout.flush();
 	image = CollectImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows);
-
-	cout << "DONE " << myRank << endl;
-	cout.flush();
 
     auto stop = chrono::high_resolution_clock::now();
     auto diff = stop - start;
@@ -138,6 +129,8 @@ int main(int argc, char* argv[])
 	//
 	if (myRank == 0)
 	{
+		debug_compare_image("sunset.bmp", steps, false /*verbose*/, image, 0, rows-1, 0, cols-1);
+
 		cout << endl;
 		cout << "** Done!  Time: " << duration.count() / 1000.0 << " secs" << endl;
 
@@ -147,7 +140,6 @@ int main(int argc, char* argv[])
 		cout << "** Execution complete." << endl;
 		cout << endl;
 		
-		debug_compare_image("sunset.bmp", steps, true /*verbose*/, image, 0, rows-1, 0, cols-1);
 	}
 
 
@@ -196,20 +188,12 @@ uchar** DistributeImage(int myRank, int numProcs,
 	/* All processes execute broadcast */
 	int sender = 0;
 
-	// cout << "TEST ON " << myRank << " BEFORE BROADCAST" << endl;
-	// cout.flush();
 	MPI_Bcast(params, 2 /*count*/, MPI_INT, sender, MPI_COMM_WORLD);
-	// cout << "TEST ON " << myRank << " AFTER BROADCAST" << endl;
-	// cout.flush();
 	
 	rowsPerProc = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
 	cols = params[1];  // cols is the same for all processes
-	// rows = rowsPerProc;
-	
-	if (myRank == 0)  // Master gets leftover rows
-	{
-		// rowsPerProc += leftOverRows;
-	}
+
+	if (myRank == 0) rowsPerProc += leftOverRows;
 
 	// allocate memory for the image chunk:
 	uchar** chunk;
@@ -219,14 +203,9 @@ uchar** DistributeImage(int myRank, int numProcs,
 
 	uchar* sendbuf = (myRank == 0) ? image[0] : NULL;  // master sends their chunk, workers receive their chunk
 	uchar* recvbuf = (myRank == 0) ? (uchar*)MPI_IN_PLACE : chunk[1];  // master sends their chunk, workers receive their chunk
-	//MAYBE CHANGE STARTROW FOR MAIN TO JUST LEFTOVERROWS, NOT LEFTOVERROWS + 1
 
-	// cout << "TEST ON " << myRank << " BEFORE SCATTER" << endl;
-	// cout.flush();
 	MPI_Scatter(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR,
 		recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
-	// cout << "TEST ON " << myRank << " AFTER SCATTER" << endl;
-	// cout.flush();
 
 	//
 	// Done!  Everyone returns back a matrix to process... (rows and cols should already

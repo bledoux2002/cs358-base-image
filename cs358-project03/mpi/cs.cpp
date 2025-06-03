@@ -232,8 +232,6 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	int numProcs;
 	MPI_Status status;
 
-	uchar** original_image = image;
-
 	MPI_Comm_size(MPI_COMM_WORLD, &numProcs);  // number of processes involved in run:
 	MPI_Comm_rank(MPI_COMM_WORLD, &myRank);    // my proc id: 0 <= myRank < numProcs:
 
@@ -251,10 +249,14 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	// since we don't process the boundary rows.  If we adjust now, this makes the 
 	// processing loop MUCH cleaner:
 	//
-	// if (myRank == 0)  // main:
-	// 	rows--;
+	if (myRank == 0)  // main:
+		rows--;
 	if (myRank == numProcs-1)  // last worker:
 		rows--;
+
+		
+	int startRow = 1;
+	int endRow = rows;
 
 	//
 	// Okay, now perform contrast stretching, one step at a time:
@@ -293,10 +295,6 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 		// Okay, for each row in OUR CHUNK, lighten/darken pixel:
 		//
 		int diffs = 0;
-		
-		int startRow = 1;
-		int endRow = rows;
-		if (myRank == 0) startRow++;
 
 		for (int row = startRow; row <= endRow; row++)
 		{
@@ -346,40 +344,5 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 
 	}//while-each-step
 
-	//
-	// Okay, we're done, let's make sure the final results are in 
-	// original image matrix so it's returned in the same memory
-	// that was passed to us. We need to do this because the main
-	// process passed in the ENTIRE image, and so it needs that
-	// memory back --- we can't return the temporary image2 matrix
-	// allocated here since it's a different size for main:
-	//
-	if (image != original_image) {
-
-		for (int row = 1; row <= rows; row++)
-		{
-			int basecol = 3;  // start of column (skip boundary column 0):
-
-			for (int col = 1; col < cols - 1; col++, basecol += 3)
-			{
-				original_image[row][basecol] = image[row][basecol];
-				original_image[row][basecol + 1] = image[row][basecol + 1];
-				original_image[row][basecol + 2] = image[row][basecol + 2];
-			}
-		}
-
-		Delete2dMatrix(image);
-	}
-	else {
-		//
-		// results are already in original memory, so nothing to copy over:
-		//
-
-		Delete2dMatrix(image2);
-	}
-
-	//
-	// Done! Return updated CHUNK:
-	//
-	return original_image;
+	return image;
 }
