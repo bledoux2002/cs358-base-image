@@ -232,9 +232,10 @@ uchar** CollectImage(int myRank, int numProcs,
 	cout << myRank << "): Gathering image..." << endl;
 	cout.flush();
 	int receiver = 0;  // master receives, workers send
+	uchar* sendbuf = (myRank == 0) ? (uchar*)MPI_IN_PLACE : image[1];
 	uchar* recvbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // workers send their chunk, master receives
 
-	MPI_Gather(image[1], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
+	MPI_Gather(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
 	    recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
 
 	// 
