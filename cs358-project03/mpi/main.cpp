@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
 	//
 	if (myRank == 0)
 	{
-		debug_compare_image("sunset.bmp", steps, false /*verbose*/, image, 0, rows-1, 0, cols-1);
+		// debug_compare_image("sunset.bmp", steps, false /*verbose*/, image, 0, rows-1, 0, cols-1);
 
 		cout << endl;
 		cout << "** Done!  Time: " << duration.count() / 1000.0 << " secs" << endl;

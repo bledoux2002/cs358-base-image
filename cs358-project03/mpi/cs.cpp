@@ -243,6 +243,8 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	//
 	uchar **image2 = New2dMatrix<uchar>(rows+2, cols*3);  // worst-case: +2 ghost rows
 
+	uchar **original_image = image;
+
 	//
 	// Okay, processes on the boundary of the image (the master and last worker, i.e.
 	// processes that own top and bottom chunks of image) have one fewer row to process
@@ -343,6 +345,23 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 		step++;
 
 	}//while-each-step
+
+	// If we ended on an odd step, the final result is in image2, but image points to original
+	// We need to copy the final result back to the original matrix
+	if (image != original_image) {
+		// Copy the result back to the original matrix
+		for (int row = 0; row <= rows + 1; row++) {
+			for (int col = 0; col < cols * 3; col++) {
+				original_image[row][col] = image[row][col];
+			}
+		}
+		// Clean up the temporary matrix
+		Delete2dMatrix(image);
+		image = original_image;
+	} else {
+		// Clean up the temporary matrix
+		Delete2dMatrix(image2);
+	}
 
 	return image;
 }
