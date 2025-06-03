@@ -6,7 +6,7 @@
 //
 // Usage: cs infile.bmp outfile.bmp steps
 //
-// << YOUR NAME >>
+// Benjamin Ledoux
 //
 // Initial author:
 //   Prof. Joe Hummel
@@ -20,8 +20,8 @@
 //
 // Function prototypes:
 //
-uchar** DistributeImage(int myRank, int numProcs, uchar** image, int& rows, int& cols, int& rowsPerProc, int& leftOverRows);
-uchar** CollectImage(int myRank, int numProcs, uchar** image, int rows, int cols, int rowsPerProc, int leftOverRows);
+uchar** DistributeImage(int myRank, int numProcs, uchar** image, int& rows, int& cols, int& rowsPerProc, int& leftOverRows, int*& sendCounts, int*& displaces);
+uchar** CollectImage(int myRank, int numProcs, uchar** image, int rows, int cols, int rowsPerProc, int leftOverRows, int* recvCounts, int* displaces);
 
 
 //
@@ -78,6 +78,8 @@ int main(int argc, char* argv[])
 	BITMAPINFOHEADER bitmapInfoHeader;
 	uchar** image = nullptr;
 	int rows = 0, cols = 0, rowsPerProc = 0, leftOverRows = 0;
+	int* sendCounts = nullptr;
+	int* displaces = nullptr;
 
 	if (myRank == 0)
 	{
@@ -108,7 +110,7 @@ int main(int argc, char* argv[])
 	//
 	// MASTER distributes matrix, WORKERS receives their chunk of matrix:
 	//
-	image = DistributeImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows);
+	image = DistributeImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows, sendCounts, displaces);
 
 	//
 	// Okay, everyone performs constrast-stretching on their chunk:
@@ -118,7 +120,7 @@ int main(int argc, char* argv[])
 	//
 	// Collect the results: WORKERS send, MASTER receives and puts image back together:
 	//
-	image = CollectImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows);
+	image = CollectImage(myRank, numProcs, image, rows, cols, rowsPerProc, leftOverRows, sendCounts, displaces);
 
     auto stop = chrono::high_resolution_clock::now();
     auto diff = stop - start;
@@ -166,7 +168,7 @@ int main(int argc, char* argv[])
 //
 uchar** DistributeImage(int myRank, int numProcs,
 	                    uchar** image, int& rows, int& cols, 
-						int& rowsPerProc, int& leftOverRows)
+						int& rowsPerProc, int& leftOverRows, int*& sendCounts, int*& displaces)
 {
 	int  params[2];
 
@@ -193,18 +195,31 @@ uchar** DistributeImage(int myRank, int numProcs,
 	rowsPerProc = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
 	cols = params[1];  // cols is the same for all processes
 
-	if (myRank == 0) rowsPerProc += leftOverRows;
-
+	
 	// allocate memory for the image chunk:
-	uchar** chunk;
+	uchar** chunk = nullptr; //prevents warning in terminal
 	if (myRank > 0) {
 		chunk = New2dMatrix<uchar>(rowsPerProc + 2, cols * 3);  // worst-case: +2 ghost rows
 	}
 
+	sendCounts = new int[numProcs];
+	displaces = new int[numProcs];
+	
+	sendCounts[0] = (rowsPerProc + leftOverRows) * cols * 3;
+	displaces[0] = 0;
+	
+	for (int i = 1; i < numProcs; i++) {
+		sendCounts[i] = rowsPerProc * cols * 3;
+		displaces[i] = ((rowsPerProc + leftOverRows) + (i - 1) * rowsPerProc) * cols * 3;
+	}
+	
+	if (myRank == 0) rowsPerProc += leftOverRows;
+
 	uchar* sendbuf = (myRank == 0) ? image[0] : NULL;  // master sends their chunk, workers receive their chunk
 	uchar* recvbuf = (myRank == 0) ? (uchar*)MPI_IN_PLACE : chunk[1];  // master sends their chunk, workers receive their chunk
 
-	MPI_Scatter(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR,
+
+	MPI_Scatterv(sendbuf, sendCounts, displaces, MPI_UNSIGNED_CHAR,
 		recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
 
 	//
@@ -227,16 +242,18 @@ uchar** DistributeImage(int myRank, int numProcs,
 //
 uchar** CollectImage(int myRank, int numProcs,
 	                 uchar** image, int rows, int cols, 
-	                 int rowsPerProc, int leftOverRows)
+	                 int rowsPerProc, int leftOverRows, int* recvCounts, int* displaces)
 {
 	cout << myRank << "): Gathering image..." << endl;
 	cout.flush();
-	int receiver = 0;  // master receives, workers send
-	uchar* sendbuf = (myRank == 0) ? (uchar*)MPI_IN_PLACE : image[1];
-	uchar* recvbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // workers send their chunk, master receives
 
-	MPI_Gather(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
-	    recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
+	int receiver = 0;  // master receives, workers send
+
+	uchar* sendbuf = (myRank == 0) ? (uchar*)MPI_IN_PLACE : image[1];
+	uchar* recvbuf = (myRank == 0) ? image[0] : NULL;  // workers send their chunk, master receives
+
+	MPI_Gatherv(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, 
+	    recvbuf, recvCounts, displaces, MPI_UNSIGNED_CHAR, receiver, MPI_COMM_WORLD);
 
 	// 
 	// Done, return final image:
