@@ -115,9 +115,9 @@ int main(int argc, char* argv[])
 	//
 	// Okay, everyone performs constrast-stretching on their chunk:
 	//
-	cout << "CONTRAST STRETCH " << myRank << endl;
-	cout.flush();
-	image = ContrastStretch(image, rows, cols, steps);
+	// cout << "CONTRAST STRETCH " << myRank << ", rows: " << rows << endl;
+	// cout.flush();
+	image = ContrastStretch(image, rowsPerProc, cols, steps);
 
 	//
 	// Collect the results: WORKERS send, MASTER receives and puts image back together:
@@ -178,8 +178,8 @@ uchar** DistributeImage(int myRank, int numProcs,
 {
 	int  params[2];
 
-	cout << myRank << "): Distributing image..." << endl;
-	cout.flush();
+	// cout << myRank << "): Distributing image..." << endl;
+	// cout.flush();
 
 	//
 	// Master: distribute size of each worker's CHUNK (rows x cols), then the image
@@ -204,37 +204,39 @@ uchar** DistributeImage(int myRank, int numProcs,
 	
 	rowsPerProc = params[0];  // rowsPerProc for workers, or rowsPerProc + leftOverRows for master
 	cols = params[1];  // cols is the same for all processes
+	// rows = rowsPerProc;
 	
 	if (myRank == 0)  // Master gets leftover rows
 	{
-		rowsPerProc += leftOverRows;
+		// rowsPerProc += leftOverRows;
 	}
 
 	// allocate memory for the image chunk:
-	uchar** chunk = New2dMatrix<uchar>(rowsPerProc, cols * 3);  // worst-case: +2 ghost rows
+	uchar** chunk;
+	if (myRank > 0) {
+		chunk = New2dMatrix<uchar>(rowsPerProc + 2, cols * 3);  // worst-case: +2 ghost rows
+	}
 
-	uchar* sendbuf = (myRank == 0) ? image[leftOverRows] : NULL;  // master sends their chunk, workers receive their chunk
-	int startRow = (myRank == 0) ? leftOverRows + 1 : 1;  // master starts at leftOverRows, workers start at 0
-	// int startRow = 1;
+	uchar* sendbuf = (myRank == 0) ? image[0] : NULL;  // master sends their chunk, workers receive their chunk
+	uchar* recvbuf = (myRank == 0) ? (uchar*)MPI_IN_PLACE : chunk[1];  // master sends their chunk, workers receive their chunk
 	//MAYBE CHANGE STARTROW FOR MAIN TO JUST LEFTOVERROWS, NOT LEFTOVERROWS + 1
 
 	// cout << "TEST ON " << myRank << " BEFORE SCATTER" << endl;
 	// cout.flush();
 	MPI_Scatter(sendbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR,
-		chunk[startRow], rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
+		recvbuf, rowsPerProc * cols * 3, MPI_UNSIGNED_CHAR, sender, MPI_COMM_WORLD);
 	// cout << "TEST ON " << myRank << " AFTER SCATTER" << endl;
 	// cout.flush();
-
-	if (myRank == 0) {
-		// copy the leftover rows into the chunk for the master process
-		memcpy(chunk[0], image[0], leftOverRows * cols * 3);
-	}
 
 	//
 	// Done!  Everyone returns back a matrix to process... (rows and cols should already
 	// be set for both master and workers)
 	//
-	return chunk;
+	if (myRank == 0) {
+		return image;
+	} else {
+		return chunk;
+	}
 }
 
 

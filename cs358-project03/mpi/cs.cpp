@@ -145,8 +145,9 @@ void copy_boundary(uchar** image2, uchar** image, int rows, int cols)
 //
 // stretch_one_pixel:
 //
-void stretch_one_pixel(uchar** image2, uchar** image, int baserow, int basecol)
+int stretch_one_pixel(uchar** image2, uchar** image, int baserow, int basecol)
 {
+	int changes = 0;
 	int prevrow = baserow - 1;  // row above
 	int nextrow = baserow + 1;  // row below
 
@@ -170,6 +171,8 @@ void stretch_one_pixel(uchar** image2, uchar** image, int baserow, int basecol)
 		image[nextrow][nextcol],
 		1 /*stepby*/);
 
+	if (image2[baserow][basecol] != image[baserow][basecol]) changes++;
+
 	// Green:
 	basecol++;
 	prevcol++;
@@ -186,6 +189,8 @@ void stretch_one_pixel(uchar** image2, uchar** image, int baserow, int basecol)
 		image[nextrow][nextcol],
 		1 /*stepby*/);
 
+	if (image2[baserow][basecol] != image[baserow][basecol]) changes++;
+
 	// Red:
 	basecol++;
 	prevcol++;
@@ -201,6 +206,10 @@ void stretch_one_pixel(uchar** image2, uchar** image, int baserow, int basecol)
 		image[nextrow][basecol],
 		image[nextrow][nextcol],
 		1 /*stepby*/);
+	
+	if (image2[baserow][basecol] != image[baserow][basecol]) changes++;
+
+	return changes;
 }
 
 
@@ -228,6 +237,7 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	MPI_Comm_size(MPI_COMM_WORLD, &numProcs);  // number of processes involved in run:
 	MPI_Comm_rank(MPI_COMM_WORLD, &myRank);    // my proc id: 0 <= myRank < numProcs:
 
+	cout << myRank << endl;
 	//
 	// First, EVERYONE needs a temporary 2D matrix of the same size as THEIR CHUNK (include
 	// memory for ghost rows so that temp matrix is the same size, which makes the processing
@@ -241,8 +251,8 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 	// since we don't process the boundary rows.  If we adjust now, this makes the 
 	// processing loop MUCH cleaner:
 	//
-	if (myRank == 0)  // main:
-		rows--;
+	// if (myRank == 0)  // main:
+	// 	rows--;
 	if (myRank == numProcs-1)  // last worker:
 		rows--;
 
@@ -276,17 +286,19 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 		// 2 of 2: everyone send their first data row *UP* to the previous proc, and receive
 		// that row from the process below them and store into their last (bottom) ghost row:
 		//
-		int temp = dest;
-		dest = src;
-		src = temp;
+		MPI_Sendrecv(image[1], cols * 3, MPI_UNSIGNED_CHAR, src, tag,
+		    image[rows + 1], cols * 3, MPI_UNSIGNED_CHAR, dest, tag, MPI_COMM_WORLD, &status);
 		
-		MPI_Sendrecv(image[0], cols * 3, MPI_UNSIGNED_CHAR, dest, tag,
-		    image[rows], cols * 3, MPI_UNSIGNED_CHAR, src, tag, MPI_COMM_WORLD, &status);
 		//
 		// Okay, for each row in OUR CHUNK, lighten/darken pixel:
 		//
 		int diffs = 0;
-		for (int row = 1; row <= rows; row++)
+		
+		int startRow = 1;
+		int endRow = rows;
+		if (myRank == 0) startRow++;
+
+		for (int row = startRow; row <= endRow; row++)
 		{
 			//
 			// And for each column (except boundary columns), lighten/darken pixel:
@@ -298,21 +310,23 @@ uchar **ContrastStretch(uchar **image, int rows, int cols, int steps)
 
 			for (int col = 1; col < cols - 1; col++, basecol += 3)
 			{
-				stretch_one_pixel(image2, image, row, basecol);
-				// Check if any of the rgb values have changed at all
-				for (int offset = 0; offset < 3; offset++) {
-					if (image[row][basecol + offset] != image2[row][basecol + offset])
-						diffs++;
-				}
+				diffs += stretch_one_pixel(image2, image, row, basecol);
 			}
 		}
 
+		// cout << "Stretch step completed in " << myRank << endl;
+		// cout.flush();
+
+		cout << "** Step " << step << "..." << endl;
+		cout << "   Diff " << diffs << endl;
+
+		
 		int total_diffs = 0;
-
+		
 		MPI_Reduce(&diffs, &total_diffs, 1, MPI_INT, MPI_SUM, 0 /*main*/, MPI_COMM_WORLD);
-
+		
 		MPI_Bcast(&total_diffs, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
+		
 		converged = (total_diffs == 0);
 
 		//
